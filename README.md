@@ -120,6 +120,12 @@ source ./basher user myuser
 nmap -sV $target
 ssh $user@$target
 curl http://$target
+
+./basher --list
+VARIABLE             VALUE
+--------             -----
+target               10.10.10.6
+user                 th3b3stus3r3v3r
 ```
 
 ---
