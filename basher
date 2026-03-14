@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+# basher - a simple key-value store
+# Usage:
+#   source basher <varname> <value>   # set a variable (and export it)
+#   source basher <varname>           # get a variable
+#   source basher --list              # list all variables
+#   source basher --delete <varname>  # delete a variable
+#   source basher --clear             # clear all variables
+#   source basher --load              # export all stored variables into current shell
+#
+# TIP: Add this to your ~/.bashrc for easy use:
+#   alias basher='source /path/to/basher'
+
+STORE_FILE="${BASHER_STORE:-$HOME/.basher_store}"
+
+usage() {
+    echo "Usage (always run with 'source'):"
+    echo "  source basher <varname> <value>     Set and export a variable"
+    echo "  source basher <varname>             Get a variable"
+    echo "  source basher --load                Export all stored variables"
+    echo "  source basher --list                List all variables"
+    echo "  source basher --delete <varname>    Delete a variable"
+    echo "  source basher --clear               Clear all variables"
+    return 1
+}
+
+# Ensure store file exists
+touch "$STORE_FILE" 2>/dev/null || {
+    echo "Error: Cannot access store file: $STORE_FILE" >&2
+    return 1
+}
+
+case "$1" in
+    --load)
+        if [[ ! -s "$STORE_FILE" ]]; then
+            echo "(no variables stored)"
+        else
+            while IFS='=' read -r key value; do
+                [[ -z "$key" ]] && continue
+                export "$key"="$value"
+                echo "Exported: $key = $value"
+            done < "$STORE_FILE"
+        fi
+        ;;
+
+    --list|-l)
+        if [[ ! -s "$STORE_FILE" ]]; then
+            echo "(no variables stored)"
+        else
+            printf "%-20s %s\n" "VARIABLE" "VALUE"
+            printf "%-20s %s\n" "--------" "-----"
+            while IFS='=' read -r key value; do
+                [[ -z "$key" ]] && continue
+                printf "%-20s %s\n" "$key" "$value"
+            done < "$STORE_FILE"
+        fi
+        ;;
+
+    --delete|-d)
+        [[ -z "$2" ]] && usage
+        if grep -q "^${2}=" "$STORE_FILE" 2>/dev/null; then
+            grep -v "^${2}=" "$STORE_FILE" > "${STORE_FILE}.tmp" && mv "${STORE_FILE}.tmp" "$STORE_FILE"
+            unset "$2"
+            echo "Deleted: $2"
+        else
+            echo "Variable not found: $2" >&2
+            return 1
+        fi
+        ;;
+
+    --clear)
+        while IFS='=' read -r key value; do
+            [[ -z "$key" ]] && continue
+            unset "$key"
+        done < "$STORE_FILE"
+        > "$STORE_FILE"
+        echo "Cleared all variables."
+        ;;
+
+    --help|-h)
+        usage
+        ;;
+
+    "")
+        usage
+        ;;
+
+    *)
+        VARNAME="$1"
+        VALUE="$2"
+
+        # Validate variable name (alphanumeric + underscore)
+        if [[ ! "$VARNAME" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+            echo "Error: Invalid variable name '$VARNAME'. Use letters, digits, and underscores only." >&2
+            return 1
+        fi
+
+        if [[ -n "$VALUE" ]]; then
+            # SET: remove old entry (if any), then append new one
+            grep -v "^${VARNAME}=" "$STORE_FILE" > "${STORE_FILE}.tmp" && mv "${STORE_FILE}.tmp" "$STORE_FILE"
+            echo "${VARNAME}=${VALUE}" >> "$STORE_FILE"
+            export "$VARNAME"="$VALUE"
+            echo "Set & exported: $VARNAME = $VALUE"
+        else
+            # GET: look up the variable
+            result=$(grep "^${VARNAME}=" "$STORE_FILE" | cut -d'=' -f2-)
+            if [[ -n "$result" ]]; then
+                echo "$result"
+            else
+                echo "Variable not found: $VARNAME" >&2
+                return 1
+            fi
+        fi
+        ;;
+esac
