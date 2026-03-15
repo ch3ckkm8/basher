@@ -12,6 +12,41 @@
 # TIP: Add this to your ~/.bashrc for easy use:
 #   alias basher='source /path/to/basher'
 
+_basher_banner() {
+    cat << 'BANNER'
+
+  ██████╗  █████╗ ███████╗██╗  ██╗███████╗██████╗ 
+  ██╔══██╗██╔══██╗██╔════╝██║  ██║██╔════╝██╔══██╗
+  ██████╔╝███████║███████╗███████║█████╗  ██████╔╝
+  ██╔══██╗██╔══██║╚════██║██╔══██║██╔══╝  ██╔══██╗
+  ██████╔╝██║  ██║███████║██║  ██║███████╗██║  ██║
+  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+
+it's 3am. you have 47 tabs open. you forgot the target IP again... (╯°□°)╯
+
+ (ง •̀_•́)ง  <-- you, aggressively running to basher
+
+  typing IPs     remembering IPs    using basher
+     :-|              :-D              (⌐■_■)
+    /|  \            /|  \            /|   \
+   / \   \          / \   \          / \    \
+   
+ [suffering]        [coping]        [ascended]
+     ┌──────────────────────┐
+     │ target = 10.10.10.6  │
+     │ user   = admin       │
+     │ pass   = Passw0rd!   │
+     │ port   = 445         │
+     └──────────────────────┘
+
+     $ nmap $target              # didn't type the IP
+     $ ssh $user@$target         # didn't type the user
+     $ evil-winrm -i $target -u $user -p $pass       
+
+BANNER
+}
+
+
 STORE_FILE="${BASHER_STORE:-$HOME/.basher_store}"
 
 usage() {
@@ -30,6 +65,8 @@ touch "$STORE_FILE" 2>/dev/null || {
     echo "Error: Cannot access store file: $STORE_FILE" >&2
     return 1
 }
+
+_basher_banner
 
 case "$1" in
     --load)
