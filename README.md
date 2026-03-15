@@ -2,6 +2,34 @@
 
 A simple bash key-value store that lets you save, retrieve, and export variables directly into your shell session.
 
+  ██████╗  █████╗ ███████╗██╗  ██╗███████╗██████╗ 
+  ██╔══██╗██╔══██╗██╔════╝██║  ██║██╔════╝██╔══██╗
+  ██████╔╝███████║███████╗███████║█████╗  ██████╔╝
+  ██╔══██╗██╔══██║╚════██║██╔══██║██╔══╝  ██╔══██╗
+  ██████╔╝██║  ██║███████║██║  ██║███████╗██║  ██║
+  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+
+it's 3am. you have 47 tabs open. you forgot the target IP again... (╯°□°)╯
+
+ (ง •̀_•́)ง  <-- you, aggressively running to basher
+
+  typing IPs     remembering IPs    using basher
+     :-|              :-D              (⌐■_■)
+    /|  \            /|  \            /|   \
+   / \   \          / \   \          / \    \
+   
+ [suffering]        [coping]        [ascended]
+     ┌──────────────────────┐
+     │ target = 10.10.10.6  │
+     │ user   = admin       │
+     │ pass   = Passw0rd!   │
+     │ port   = 445         │
+     └──────────────────────┘
+
+     $ nmap $target              # didn't type the IP
+     $ ssh $user@$target         # didn't type the user
+     $ evil-winrm -i $target -u $user -p $pass      
+
 ---
 
 ## ⚠️ Important: How to Run
