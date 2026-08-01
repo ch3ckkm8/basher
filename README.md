@@ -80,6 +80,21 @@ source ./basher user myuser
 source ./basher port 8080
 ```
 
+### Set a variable with a custom table column name
+An optional third argument lets you give the variable a different display name when it shows up in `--table` (see below). It must be wrapped in square brackets.
+
+```bash
+source ./basher target 10.10.10.6 [IP]
+source ./basher pass Passw0rd! [Password]
+```
+
+If you don't provide a `[ColumnName]`, the table just uses the variable name itself (e.g. `user` above).
+
+```bash
+source ./basher foo bar BADCOL
+# Error: column name must be wrapped in brackets, e.g. [ColumnName]
+```
+
 ### Get a variable
 ```bash
 source ./basher target
@@ -89,11 +104,29 @@ source ./basher target
 ### List all stored variables
 ```bash
 source ./basher --list
-# VARIABLE             VALUE
-# --------             -----
-# target               10.10.10.6
-# user                 myuser
-# port                 8080
+# VARIABLE             VALUE                COLUMN
+# --------             -----                ------
+# target               10.10.10.6           IP
+# user                 myuser               (default)
+# port                 8080                 (default)
+```
+
+### Display all variables as a table
+Prints all stored variables as a single table, where each **column header is the variable's name** (or its custom `[ColumnName]`, if one was set) and the value sits underneath it.
+
+```bash
+source ./basher --table
+# IP         user    port
+# ---------- ------- ----
+# 10.10.10.6 myuser  8080
+```
+
+This also automatically writes the same table as a Markdown file — `basher_table.md` — saved in the same directory as the `basher` script itself. It's overwritten every time you run `--table`.
+
+```md
+| IP | user | port |
+| --- | --- | --- |
+| 10.10.10.6 | myuser | 8080 |
 ```
 
 ### Load all variables into a new shell session
@@ -122,13 +155,15 @@ source ./basher --clear
 
 ## Storage
 
-Variables are stored in `~/.basher_store` as plain `KEY=VALUE` pairs:
+Variables are stored in `~/.basher_store`, one per line, as `KEY=VALUE` followed by a tab-separated custom column name (which may be empty if you didn't set one):
 
 ```
-target=10.10.10.6
-user=myuser
-port=8080
+target=10.10.10.6	IP
+user=myuser	
+port=8080	
 ```
+
+You don't need to edit this file by hand — it's managed for you by the `set`, `--delete`, and `--clear` commands.
 
 You can override the storage location with the `BASHER_STORE` environment variable:
 
@@ -142,7 +177,7 @@ source ./basher target 10.10.10.6
 ## Real-world example
 
 ```bash
-source ./basher target 10.10.10.6
+source ./basher target 10.10.10.6 [IP]
 source ./basher user myuser
 
 # Use variables in other tools
@@ -150,11 +185,16 @@ nmap -sV $target
 ssh $user@$target
 curl http://$target
 
-./basher --list
-VARIABLE             VALUE
---------             -----
-target               10.10.10.6
-user                 th3b3stus3r3v3r
+source ./basher --list
+# VARIABLE             VALUE                COLUMN
+# --------             -----                ------
+# target               10.10.10.6           IP
+# user                 th3b3stus3r3v3r      (default)
+
+source ./basher --table
+# IP         user
+# ---------- ----------------
+# 10.10.10.6 th3b3stus3r3v3r
 ```
 
 ---
@@ -168,3 +208,5 @@ source ./basher my_var value      # ✅ valid
 source ./basher 1var value        # ❌ invalid
 source ./basher my-var value      # ❌ invalid
 ```
+
+Custom table column names (the optional `[ColumnName]` argument) must be wrapped in square brackets, but otherwise have no character restrictions.
