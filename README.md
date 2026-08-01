@@ -177,24 +177,33 @@ source ./basher target 10.10.10.6
 ## Real-world example
 
 ```bash
-source ./basher target 10.10.10.6 [IP]
-source ./basher user myuser
+source basher ip1 10.10.18.3 [IP]
+source basher host1 linuxhost [Hostname]
+source basher notes1 bob-sworkstation [Notes]
+source basher ports1 80,9000 [Ports]
+source basher user1 b0b [notable]
+source basher pass1 p4ssw0rd [notable]
+source basher creds1 $user1:$pass1 [Credentials]
 
-# Use variables in other tools
-nmap -sV $target
-ssh $user@$target
-curl http://$target
+> source basher --list
+VARIABLE             VALUE                COLUMN
+--------             -----                ------
+ip1                  10.10.18.3           IP
+user1                b0b                  (excluded from --table)
+pass1                p4ssw0rd             (excluded from --table)
+host1                linuxhost            Hostname
+notes1               bob-sworkstation     Notes
+ports1               80,9000              Ports
+creds1               b0b:p4ssw0rd         Credentials
 
-source ./basher --list
-# VARIABLE             VALUE                COLUMN
-# --------             -----                ------
-# target               10.10.10.6           IP
-# user                 th3b3stus3r3v3r      (default)
+> source basher --table
 
-source ./basher --table
-# IP         user
-# ---------- ----------------
-# 10.10.10.6 th3b3stus3r3v3r
+IP         Hostname  Notes            Ports   Credentials  
+---------- --------- ---------------- ------- ------------ 
+10.10.18.3 linuxhost bob-sworkstation 80,9000 b0b:p4ssw0rd 
+
+Markdown table written to: /home/ch3ckm8/HTB/garfield/basher/basher_table.md
+
 ```
 
 ---
