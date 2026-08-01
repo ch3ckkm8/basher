@@ -172,6 +172,18 @@ export BASHER_STORE=/tmp/my_custom_store
 source ./basher target 10.10.10.6
 ```
 
+## Variable naming rules
+
+Variable names must start with a letter or underscore, and contain only letters, digits, and underscores.
+
+```bash
+source ./basher my_var value      # ✅ valid
+source ./basher 1var value        # ❌ invalid
+source ./basher my-var value      # ❌ invalid
+```
+
+Custom table column names (the optional `[ColumnName]` argument) must be wrapped in square brackets, but otherwise have no character restrictions.
+
 ---
 
 ## Real-world example
@@ -208,15 +220,59 @@ Markdown table written to: /home/ch3ckm8/HTB/garfield/basher/basher_table.md
 ```
 
 ---
+## Use it along with wyrmgaze
 
-## Variable naming rules
-
-Variable names must start with a letter or underscore, and contain only letters, digits, and underscores.
+These variables can easily be imported to wyrmgaze https://github.com/ch3ckkm8/wyrmgaze for visualizing an attack chain:
 
 ```bash
-source ./basher my_var value      # ✅ valid
-source ./basher 1var value        # ❌ invalid
-source ./basher my-var value      # ❌ invalid
-```
+echo "$ip1 | *nmap* | $ports1" > test.txt 
+echo "$ports1 | *enum* | webapp" >> test.txt
 
-Custom table column names (the optional `[ColumnName]` argument) must be wrapped in square brackets, but otherwise have no character restrictions.
+└─$ cat test.txt                                                                                                                                                   
+10.10.18.3 | *nmap* | 80,9000
+80,9000 | *enum* | webapp
+
+python wyrmgaze.py test.txt
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡤⢴⣾⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠴⠚⠉⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⣾⠟⠀⠀⣀⣤⣾⣿⣟⣁⠤⠴⠒⠋⠉⠀⠀⢀⣠⠞⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠴⢚⣁⣴⠧⠔⢚⣹⠿⠟⠛⠉⠁⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠄⠀⠀⠀⠀⠀⠀⣀⣀⣀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⠴⠚⣩⠔⠋⠉⠀⠀⠐⠊⠉⠀⢀⠀⠀⠀⠀⠀⠀⢀⣠⠔⠛⠛⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⣉⡭⠟⠛⠉⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠞⠋⣟⡡⠶⠛⠒⠚⠉⠀⠀⠀⠀⠀⠀⡰⠋⠀⠀⠀⠀⢠⡖⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡤⠴⠒⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡤⠖⠋⣀⣴⣋⠥⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠀⣀⠤⠖⠒⠒⠿⢤⣀⡀⠀⠀⠀⠀⠀⣠⠴⠚⠛⠓⠦⠤⢤⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⢠⡖⠋⠀⣠⠖⠋⠁⠀⠀⠀⢀⡀⠀⠀⠀⠀⢀⣀⠤⠞⠁⠀⠉⠀⠀⠀⠀⢀⣀⣀⠀⠉⠙⠒⠦⢴⣋⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣈⣭⠽⠿⠟⠓⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⢀⣸⣧⠀⢸⡁⠀⠀⣠⣴⣲⣶⡏⠀⢀⡠⠖⠊⠉⠀⠀⠀⠀⠀⠀⠀⣼⡟⠉⠁⠀⠈⠉⠉⠒⠲⢤⣀⠈⠙⠲⢤⣀⣀⡤⠴⠶⠯⣅⣀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⣀⣠⡴⠒⠉⠁⠀⢀⡤⠛⠓⠋⠙⠻⠿⠋⢀⡴⠋⢀⡤⠒⠒⠤⣄⣠⡀⠀⠀⠀⣯⠙⠦⣄⠀⠀⠀⠀⠀⠀⠀⠈⠙⠲⠤⣀⣈⣉⣓⣦⣄⡀⠀⠀⠉⠓⠦⣄⡀⠀⠀⠀                                                                                                  
+⠀⠀⣰⣿⡟⢠⣿⣙⡓⢦⡅⠀⠀⠀⠀⣀⡤⠤⢴⠋⣸⡟⡏⠀⠀⠀⠀⠀⠙⠁⠀⠀⠀⠘⣷⠤⣈⠑⠦⣄⠀⠀⠀⠀⠀⠀⣠⣶⣚⠉⠁⠀⢈⣉⢭⣷⡶⠔⠒⠒⠚⠛⠓⠀⠀                                                                                                  
+⠀⣼⣿⠟⢀⣴⠋⢁⡖⠉⢀⡤⠖⡒⠉⢁⣄⣀⣾⠖⣇⣷⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⠀⠈⠑⠦⣀⠙⢦⡀⠀⣄⣠⡟⠳⣝⣦⠀⠀⠀⠙⠦⡈⠓⢤⡀⠀⠀⠀⠀⠀⠀                                                                                                  
+⣼⣟⢉⣤⢸⣇⣀⣈⡀⠀⢀⣤⢰⣷⡤⣾⢻⣙⣟⣷⡟⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⢿⠀⠀⠀⠀⠈⠳⠄⠘⢦⡀⢻⠁⠀⠀⠙⢷⡘⢦⣀⠀⠈⢦⡀⠙⢦⡀⠀⠀⠀⠀                                                                                                  
+⣧⣿⣿⣧⡾⣏⢹⣿⣹⣿⣿⣇⢸⡿⣇⣿⡼⠻⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠃⠈⡆⠀⠀⠀⠀⠀⠀⠘⢦⠹⣾⠀⠀⠀⠀⠀⠑⠀⠈⠉⠲⣼⣿⣦⣄⠹⣄⠀⠀⠀                                                                                                  
+⠈⢿⣿⣟⣧⠘⢾⣮⢿⣿⢿⡟⢿⠟⠉⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠹⡄⠀⡇⠀⢀⡤⠖⠒⠲⠤⣄⣳⣼⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣯⡙⢾⣆⠀⠀                                                                                                  
+⠀⠀⣻⢯⠛⠅⢀⡄⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠀⣀⣀⣀⠀⠀⠀⠀⠀⠀⣠⣞⡁⠀⠀⢇⠀⣇⡴⠋⠀⠀⠀⠀⠀⠀⠈⠻⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⡻⣄⠉⢧⡀                                                                                                  
+⠀⢠⡇⠀⠙⡶⠃⠀⢀⡖⠀⢰⠀⢠⢶⣴⡿⠚⠛⠻⢥⣉⠉⠓⠲⠦⠴⠚⠉⠀⠉⠙⢦⣸⠀⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠈⢧⡀⠀                                                                                                  
+⠀⣸⠀⢀⡠⢿⠀⠀⡼⣧⠀⡼⢷⡾⠀⠙⠃⠀⠀⠀⠀⠉⠳⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⣯⣸⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠳⡀                                                                                                  
+⠀⣇⡴⠋⠀⢸⢀⡼⠁⠈⠻⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠻⢦⡀⠀⠀⠀⠀⠀⠀⣿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹                                                                                                  
+⠀⠋⠀⠀⠀⠘⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢦⣄⠀⠀⠀⢰⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣛⢦⣤⣈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+ __    __ _   _ _ __  _ __ ___ _   _  __ _  __ _  ____  __
+ \\ \\/\/ /| | | || '__|  '_ ` _ \ | | |/ _` |/ _` ||_  / / _ \                                                                                                    
+  \ /\ / | |_| || |   | | | | | || |_| (_| | (_| | / / |  __/                                                                                                      
+   \/\/   \__, ||_|   |_| |_| |_| \__, |\__,_|\__,_|/___|\___|                                                                                                     
+            |___/                     |___/                                                                                                                        
+      [ pentest action graph generator ]                                                                                                                           
+  output dir : test/
+  actions    : 2
+
+  [horizontal] svg : test/test_horizontal.svg
+  [vertical] svg : test/test_vertical.svg
+  [hybrid] svg : test/test_hybrid.svg
+  [markdown]  md  : test/test.md
+
++-----+------------+--------+---------+
+| #   | inputs     | action | results |
++-----+------------+--------+---------+
+| 1   | 10.10.18.3 | nmap   | 80,9000 |
+| 2   | 80,9000    | enum   | webapp  |
++-----+------------+--------+---------+
+```
