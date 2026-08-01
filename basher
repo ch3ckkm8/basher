@@ -2,9 +2,16 @@
 
 # basher - a simple key-value store
 # Usage:
-#   source basher <varname> <value>   # set a variable (and export it)
+#   source basher <varname> <value> [ColumnName]  # set a variable (and export it)
+#                                                  # optional [ColumnName] (must be
+#                                                  # wrapped in brackets) sets the
+#                                                  # header used for it in --table.
+#                                                  # Pass [notable] instead to still
+#                                                  # save & export the variable, but
+#                                                  # hide it from --table entirely.
 #   source basher <varname>           # get a variable
-#   source basher --list              # list all variables
+#   source basher --list              # list all variables (also exports them into the shell)
+#   source basher --table             # display all variables as a table (also exports them into the shell)
 #   source basher --delete <varname>  # delete a variable
 #   source basher --clear             # clear all variables
 #   source basher --load              # export all stored variables into current shell
@@ -51,10 +58,15 @@ STORE_FILE="${BASHER_STORE:-$HOME/.basher_store}"
 
 usage() {
     echo "Usage (always run with 'source'):"
-    echo "  source basher <varname> <value>     Set and export a variable"
+    echo "  source basher <varname> <value> [ColumnName]   Set and export a variable"
+    echo "                                       (optional [ColumnName] sets the"
+    echo "                                        header used for it in --table,"
+    echo "                                        or pass [notable] to exclude it"
+    echo "                                        from --table entirely)"
     echo "  source basher <varname>             Get a variable"
     echo "  source basher --load                Export all stored variables"
-    echo "  source basher --list                List all variables"
+    echo "  source basher --list                List all variables (also exports them)"
+    echo "  source basher --table               Display all variables as a table (also exports them)"
     echo "  source basher --delete <varname>    Delete a variable"
     echo "  source basher --clear               Clear all variables"
     return 1
@@ -66,6 +78,42 @@ touch "$STORE_FILE" 2>/dev/null || {
     return 1
 }
 
+# --- One-time migration: earlier versions of this script used a literal tab
+# --- as the field separator between KEY=VALUE / COLUMN / NOTABLE. Bash's
+# --- `read` collapses consecutive tabs (tab is "IFS whitespace"), which
+# --- corrupted entries that had no custom column set. The current format
+# --- uses \x1f (Unit Separator) instead, which doesn't have that problem.
+# --- Any line still using the old tab format is auto-recovered here: its
+# --- key/value is kept, but any old custom column name / [notable] flag
+# --- on that line can't be reliably recovered and is reset to default.
+if [[ -s "$STORE_FILE" ]] && grep -qv $'\x1f' "$STORE_FILE" 2>/dev/null; then
+    _basher_migrated=0
+    _basher_tmp="${STORE_FILE}.migrate.tmp"
+    : > "$_basher_tmp"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        if [[ "$_line" == *$'\x1f'* ]]; then
+            # Already in the current format, keep as-is
+            printf '%s\n' "$_line" >> "$_basher_tmp"
+        else
+            # Legacy tab-delimited (or plain KEY=VALUE) line: recover key/value only
+            _kv="${_line%%$'\t'*}"
+            _key="${_kv%%=*}"
+            _value="${_kv#*=}"
+            if [[ -n "$_key" ]]; then
+                printf '%s=%s\x1f\x1f\n' "$_key" "$_value" >> "$_basher_tmp"
+                _basher_migrated=$((_basher_migrated + 1))
+            fi
+        fi
+    done < "$STORE_FILE"
+    mv "$_basher_tmp" "$STORE_FILE"
+    if [[ "$_basher_migrated" -gt 0 ]]; then
+        echo "Migrated $_basher_migrated variable(s) from an older basher storage format."
+        echo "Values were preserved; any custom [ColumnName]/[notable] tags on those were reset — feel free to re-set them."
+    fi
+    unset _basher_migrated _basher_tmp _line _kv _key _value
+fi
+
 _basher_banner
 
 case "$1" in
@@ -73,7 +121,10 @@ case "$1" in
         if [[ ! -s "$STORE_FILE" ]]; then
             echo "(no variables stored)"
         else
-            while IFS='=' read -r key value; do
+            while IFS=$'\x1f' read -r kv _column _notable; do
+                [[ -z "$kv" ]] && continue
+                key="${kv%%=*}"
+                value="${kv#*=}"
                 [[ -z "$key" ]] && continue
                 export "$key"="$value"
                 echo "Exported: $key = $value"
@@ -85,12 +136,145 @@ case "$1" in
         if [[ ! -s "$STORE_FILE" ]]; then
             echo "(no variables stored)"
         else
-            printf "%-20s %s\n" "VARIABLE" "VALUE"
-            printf "%-20s %s\n" "--------" "-----"
-            while IFS='=' read -r key value; do
+            printf "%-20s %-20s %s\n" "VARIABLE" "VALUE" "COLUMN"
+            printf "%-20s %-20s %s\n" "--------" "-----" "------"
+            while IFS=$'\x1f' read -r kv column notable; do
+                [[ -z "$kv" ]] && continue
+                key="${kv%%=*}"
+                value="${kv#*=}"
                 [[ -z "$key" ]] && continue
-                printf "%-20s %s\n" "$key" "$value"
+                export "$key"="$value"
+                if [[ -n "$notable" ]]; then
+                    display_col="(excluded from --table)"
+                else
+                    display_col="${column:-(default)}"
+                fi
+                printf "%-20s %-20s %s\n" "$key" "$value" "$display_col"
             done < "$STORE_FILE"
+        fi
+        ;;
+
+    --table|-t)
+        if [[ ! -s "$STORE_FILE" ]]; then
+            echo "(no variables stored)"
+        else
+            # Columns come from the custom [ColumnName] (or the varname if none set).
+            # Rows come from the trailing numeric index in the varname (user1, pass1, ...
+            # all share row "1"). Vars with no trailing index go on the last row.
+            declare -A cell
+            col_order=()
+            declare -A col_seen
+            idx_order=()
+            declare -A idx_seen
+            has_no_index=0
+
+            while IFS=$'\x1f' read -r kv column notable; do
+                [[ -z "$kv" ]] && continue
+                key="${kv%%=*}"
+                value="${kv#*=}"
+                [[ -z "$key" ]] && continue
+                export "$key"="$value"
+
+                # [notable] vars are exported but never shown in the table
+                [[ -n "$notable" ]] && continue
+
+                if [[ -n "$column" ]]; then
+                    colname="$column"
+                else
+                    colname="$key"
+                fi
+                if [[ -z "${col_seen[$colname]+x}" ]]; then
+                    col_order+=("$colname")
+                    col_seen[$colname]=1
+                fi
+
+                # Extract a trailing numeric index from the varname, if any
+                if [[ "$key" =~ ^(.*[^0-9])([0-9]+)$ ]]; then
+                    idx="${BASH_REMATCH[2]}"
+                    if [[ -z "${idx_seen[$idx]+x}" ]]; then
+                        idx_order+=("$idx")
+                        idx_seen[$idx]=1
+                    fi
+                else
+                    idx=""
+                    has_no_index=1
+                fi
+
+                cell["${idx}"$'\x1f'"${colname}"]="$value"
+            done < "$STORE_FILE"
+
+            # Row order: indices sorted ascending numerically, then the no-index row last
+            row_order=()
+            if [[ ${#idx_order[@]} -gt 0 ]]; then
+                while IFS= read -r sorted_idx; do
+                    row_order+=("$sorted_idx")
+                done < <(printf '%s\n' "${idx_order[@]}" | sort -n)
+            fi
+            [[ "$has_no_index" -eq 1 ]] && row_order+=("")
+
+            # Compute each column's width = max(len(colname), len of every value in it)
+            widths=()
+            for i in "${!col_order[@]}"; do
+                colname="${col_order[$i]}"
+                w=${#colname}
+                for idx in "${row_order[@]}"; do
+                    v="${cell[${idx}$'\x1f'${colname}]:-}"
+                    (( ${#v} > w )) && w=${#v}
+                done
+                widths[$i]=$w
+            done
+
+            # Header row (column names)
+            header=""
+            sep=""
+            for i in "${!col_order[@]}"; do
+                header+=$(printf "%-${widths[$i]}s " "${col_order[$i]}")
+                sep+=$(printf '%*s' "${widths[$i]}" '' | tr ' ' '-')
+                sep+=" "
+            done
+            echo "$header"
+            echo "$sep"
+
+            # Value rows, grouped by index (low to high), no-index vars on the last row
+            for idx in "${row_order[@]}"; do
+                row=""
+                for i in "${!col_order[@]}"; do
+                    colname="${col_order[$i]}"
+                    v="${cell[${idx}$'\x1f'${colname}]:-}"
+                    row+=$(printf "%-${widths[$i]}s " "$v")
+                done
+                echo "$row"
+            done
+
+            # --- Also write the table out as a Markdown file, next to this script ---
+            _basher_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            md_file="${_basher_script_dir}/basher_table.md"
+
+            md_header="|"
+            md_sep="|"
+            for i in "${!col_order[@]}"; do
+                md_header+=" ${col_order[$i]} |"
+                md_sep+=" --- |"
+            done
+
+            {
+                echo "$md_header"
+                echo "$md_sep"
+                for idx in "${row_order[@]}"; do
+                    md_row="|"
+                    for i in "${!col_order[@]}"; do
+                        colname="${col_order[$i]}"
+                        v="${cell[${idx}$'\x1f'${colname}]:-}"
+                        md_row+=" ${v} |"
+                    done
+                    echo "$md_row"
+                done
+            } > "$md_file"
+
+            unset cell col_seen idx_seen
+
+            echo ""
+            echo "Markdown table written to: $md_file"
         fi
         ;;
 
@@ -107,7 +291,9 @@ case "$1" in
         ;;
 
     --clear)
-        while IFS='=' read -r key value; do
+        while IFS=$'\x1f' read -r kv _column _notable; do
+            [[ -z "$kv" ]] && continue
+            key="${kv%%=*}"
             [[ -z "$key" ]] && continue
             unset "$key"
         done < "$STORE_FILE"
@@ -126,6 +312,7 @@ case "$1" in
     *)
         VARNAME="$1"
         VALUE="$2"
+        COLARG="$3"
 
         # Validate variable name (alphanumeric + underscore)
         if [[ ! "$VARNAME" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
@@ -134,14 +321,37 @@ case "$1" in
         fi
 
         if [[ -n "$VALUE" ]]; then
+            COLUMN=""
+            NOTABLE=""
+            if [[ -n "$COLARG" ]]; then
+                if [[ "$COLARG" =~ ^\[[Nn][Oo][Tt][Aa][Bb][Ll][Ee]\]$ ]]; then
+                    # Special marker: exclude this variable from --table entirely
+                    NOTABLE="1"
+                elif [[ "$COLARG" =~ ^\[(.+)\]$ ]]; then
+                    # Column name must be wrapped in brackets, e.g. [IP]
+                    COLUMN="${BASH_REMATCH[1]}"
+                else
+                    echo "Error: column name must be wrapped in brackets, e.g. [ColumnName] (or [notable] to exclude it from --table)" >&2
+                    return 1
+                fi
+            fi
+
             # SET: remove old entry (if any), then append new one
             grep -v "^${VARNAME}=" "$STORE_FILE" > "${STORE_FILE}.tmp" && mv "${STORE_FILE}.tmp" "$STORE_FILE"
-            echo "${VARNAME}=${VALUE}" >> "$STORE_FILE"
+            printf '%s=%s\x1f%s\x1f%s\n' "$VARNAME" "$VALUE" "$COLUMN" "$NOTABLE" >> "$STORE_FILE"
             export "$VARNAME"="$VALUE"
-            echo "Set & exported: $VARNAME = $VALUE"
+            if [[ -n "$NOTABLE" ]]; then
+                echo "Set & exported: $VARNAME = $VALUE (excluded from --table)"
+            elif [[ -n "$COLUMN" ]]; then
+                echo "Set & exported: $VARNAME = $VALUE (table column: $COLUMN)"
+            else
+                echo "Set & exported: $VARNAME = $VALUE"
+            fi
         else
-            # GET: look up the variable
-            result=$(grep "^${VARNAME}=" "$STORE_FILE" | cut -d'=' -f2-)
+            # GET: look up the variable (strip the trailing \tCOLUMN field)
+            line=$(grep "^${VARNAME}=" "$STORE_FILE")
+            kv="${line%%$'\x1f'*}"
+            result="${kv#*=}"
             if [[ -n "$result" ]]; then
                 echo "$result"
             else
