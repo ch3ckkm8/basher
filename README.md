@@ -177,6 +177,7 @@ source ./basher target 10.10.10.6
 ## Real-world example
 
 ```bash
+# import entries via commands below:
 source basher ip1 10.10.18.3 [IP]
 source basher host1 linuxhost [Hostname]
 source basher notes1 bob-sworkstation [Notes]
