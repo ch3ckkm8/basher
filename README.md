@@ -222,7 +222,8 @@ Markdown table written to: /home/ch3ckm8/HTB/garfield/basher/basher_table.md
 ---
 ## Use it along with wyrmgaze
 
-These variables can also be easily be imported to my attack chain visualization tool wyrmgaze https://github.com/ch3ckkm8/wyrmgaze :
+These variables can also be easily be imported to my attack chain visualization tool https://github.com/ch3ckkm8/wyrmgaze
+For example, below i import some of the variables i created with basher above towards wyrmgaze:
 
 ```bash
 echo "$ip1 | *nmap* | $ports1" > test.txt 
