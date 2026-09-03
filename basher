@@ -12,6 +12,9 @@
 #   source basher <varname>           # get a variable
 #   source basher --list              # list all variables (also exports them into the shell)
 #   source basher --table             # display all variables as a table (also exports them into the shell)
+#   source basher --table <index>     # show only the variables grouped under that index
+#                                      # (creds1_2 counts as sub-index of index "1")
+#   source basher --per-index         # display one mini-table per index, all in one go
 #   source basher --delete <varname>  # delete a variable
 #   source basher --clear             # clear all variables
 #   source basher --load              # export all stored variables into current shell
@@ -54,6 +57,113 @@ BANNER
 }
 
 
+_basher_load_table_data() {
+    # Populates (as globals): cell, col_order, idx_order, idx_seen, row_order, has_no_index
+    # Columns come from the custom [ColumnName] (or the varname if none set).
+    # Rows come from the *primary* numeric index in the varname: user1, pass1,
+    # target1 all share index "1". A trailing "_N" suffix (creds1_2, creds1_1)
+    # is treated as a sub-index of the same primary index ("1"), not its own row.
+    declare -g -A cell
+    unset cell
+    declare -g -A cell
+    col_order=()
+    declare -g -A col_seen
+    unset col_seen
+    declare -g -A col_seen
+    idx_order=()
+    declare -g -A idx_seen
+    unset idx_seen
+    declare -g -A idx_seen
+    has_no_index=0
+
+    while IFS=$'\x1f' read -r kv column notable; do
+        [[ -z "$kv" ]] && continue
+        key="${kv%%=*}"
+        value="${kv#*=}"
+        [[ -z "$key" ]] && continue
+        export "$key"="$value"
+
+        # [notable] vars are exported but never shown in the table
+        [[ -n "$notable" ]] && continue
+
+        if [[ -n "$column" ]]; then
+            colname="$column"
+        else
+            colname="$key"
+        fi
+        if [[ -z "${col_seen[$colname]+x}" ]]; then
+            col_order+=("$colname")
+            col_seen[$colname]=1
+        fi
+
+        # Extract the primary index. A trailing "_N" is a sub-index of the
+        # digits before it (creds1_2 -> primary index 1), so check that
+        # pattern first; otherwise fall back to plain trailing digits.
+        if [[ "$key" =~ ^(.*[^0-9])([0-9]+)_[0-9]+$ ]]; then
+            idx="${BASH_REMATCH[2]}"
+        elif [[ "$key" =~ ^(.*[^0-9])([0-9]+)$ ]]; then
+            idx="${BASH_REMATCH[2]}"
+        else
+            idx=""
+        fi
+
+        if [[ -n "$idx" ]]; then
+            if [[ -z "${idx_seen[$idx]+x}" ]]; then
+                idx_order+=("$idx")
+                idx_seen[$idx]=1
+            fi
+        else
+            has_no_index=1
+        fi
+
+        cell_key="${idx}"$'\x1f'"${colname}"
+        if [[ -z "${cell[$cell_key]+x}" ]]; then
+            cell["$cell_key"]="$value"
+        else
+            # Another var already occupies this exact (index, column) cell
+            # (e.g. loot5 and loot5_1 sharing both index 5 and column [Loot]) —
+            # stack them as separate sub-rows under that column instead of
+            # silently losing the earlier one. \x1e separates the stacked
+            # values internally; _basher_cell_values splits them back out.
+            cell["$cell_key"]+=$'\x1e'"$value"
+        fi
+    done < "$STORE_FILE"
+
+    # Row order: indices sorted ascending numerically, then the no-index row last
+    row_order=()
+    if [[ ${#idx_order[@]} -gt 0 ]]; then
+        while IFS= read -r sorted_idx; do
+            row_order+=("$sorted_idx")
+        done < <(printf '%s\n' "${idx_order[@]}" | sort -n)
+    fi
+    [[ "$has_no_index" -eq 1 ]] && row_order+=("")
+}
+
+# Splits a cell's (possibly stacked) value into the global array _cv.
+# Empty/unset cell -> _cv=(). A single value -> _cv=(value). Multiple
+# values stacked in the same (index, column) cell -> one element each.
+_basher_cell_values() {
+    local idx="$1" colname="$2"
+    local key="${idx}"$'\x1f'"${colname}"
+    _cv=()
+    if [[ -n "${cell[$key]+x}" ]]; then
+        IFS=$'\x1e' read -ra _cv <<< "${cell[$key]}"
+    fi
+}
+
+# How many sub-rows a given index needs: the max number of stacked values
+# across all of its columns (at least 1, since the index exists at all).
+_basher_index_subrow_count() {
+    local idx="$1"
+    local -n _cols_ref="$2"
+    local max_n=1
+    for _c in "${_cols_ref[@]}"; do
+        _basher_cell_values "$idx" "$_c"
+        (( ${#_cv[@]} > max_n )) && max_n=${#_cv[@]}
+    done
+    echo "$max_n"
+}
+
 STORE_FILE="${BASHER_STORE:-$HOME/.basher_store}"
 
 usage() {
@@ -67,6 +177,8 @@ usage() {
     echo "  source basher --load                Export all stored variables"
     echo "  source basher --list                List all variables (also exports them)"
     echo "  source basher --table               Display all variables as a table (also exports them)"
+    echo "  source basher --table <index>       Show only the variables grouped under that index"
+    echo "  source basher --per-index           Display one mini-table per index"
     echo "  source basher --delete <varname>    Delete a variable"
     echo "  source basher --clear               Clear all variables"
     return 1
@@ -158,68 +270,79 @@ case "$1" in
         if [[ ! -s "$STORE_FILE" ]]; then
             echo "(no variables stored)"
         else
-            # Columns come from the custom [ColumnName] (or the varname if none set).
-            # Rows come from the trailing numeric index in the varname (user1, pass1, ...
-            # all share row "1"). Vars with no trailing index go on the last row.
-            declare -A cell
-            col_order=()
-            declare -A col_seen
-            idx_order=()
-            declare -A idx_seen
-            has_no_index=0
+            _basher_load_table_data
 
-            while IFS=$'\x1f' read -r kv column notable; do
-                [[ -z "$kv" ]] && continue
-                key="${kv%%=*}"
-                value="${kv#*=}"
-                [[ -z "$key" ]] && continue
-                export "$key"="$value"
-
-                # [notable] vars are exported but never shown in the table
-                [[ -n "$notable" ]] && continue
-
-                if [[ -n "$column" ]]; then
-                    colname="$column"
+            if [[ -n "$2" ]]; then
+                # --table <index>: show only the variables grouped under that index
+                FILTER_IDX="$2"
+                if [[ ! "$FILTER_IDX" =~ ^[0-9]+$ ]]; then
+                    echo "Error: --table index must be numeric, e.g. --table 1" >&2
+                    return 1
+                fi
+                if [[ -z "${idx_seen[$FILTER_IDX]+x}" ]]; then
+                    echo "No variables found with index: $FILTER_IDX"
                 else
-                    colname="$key"
-                fi
-                if [[ -z "${col_seen[$colname]+x}" ]]; then
-                    col_order+=("$colname")
-                    col_seen[$colname]=1
-                fi
+                    filtered_cols=()
+                    for c in "${col_order[@]}"; do
+                        _basher_cell_values "$FILTER_IDX" "$c"
+                        [[ ${#_cv[@]} -gt 0 ]] && filtered_cols+=("$c")
+                    done
 
-                # Extract a trailing numeric index from the varname, if any
-                if [[ "$key" =~ ^(.*[^0-9])([0-9]+)$ ]]; then
-                    idx="${BASH_REMATCH[2]}"
-                    if [[ -z "${idx_seen[$idx]+x}" ]]; then
-                        idx_order+=("$idx")
-                        idx_seen[$idx]=1
-                    fi
-                else
-                    idx=""
-                    has_no_index=1
+                    subrows=$(_basher_index_subrow_count "$FILTER_IDX" filtered_cols)
+
+                    widths=()
+                    for i in "${!filtered_cols[@]}"; do
+                        c="${filtered_cols[$i]}"
+                        _basher_cell_values "$FILTER_IDX" "$c"
+                        w=${#c}
+                        for v in "${_cv[@]}"; do
+                            (( ${#v} > w )) && w=${#v}
+                        done
+                        widths[$i]=$w
+                    done
+
+                    header=""
+                    sep=""
+                    for i in "${!filtered_cols[@]}"; do
+                        header+=$(printf "%-${widths[$i]}s " "${filtered_cols[$i]}")
+                        sep+=$(printf '%*s' "${widths[$i]}" '' | tr ' ' '-')
+                        sep+=" "
+                    done
+
+                    echo "Index: $FILTER_IDX"
+                    echo "$header"
+                    echo "$sep"
+                    for ((r = 0; r < subrows; r++)); do
+                        row=""
+                        for i in "${!filtered_cols[@]}"; do
+                            c="${filtered_cols[$i]}"
+                            _basher_cell_values "$FILTER_IDX" "$c"
+                            row+=$(printf "%-${widths[$i]}s " "${_cv[$r]:-}")
+                        done
+                        echo "$row"
+                    done
                 fi
-
-                cell["${idx}"$'\x1f'"${colname}"]="$value"
-            done < "$STORE_FILE"
-
-            # Row order: indices sorted ascending numerically, then the no-index row last
-            row_order=()
-            if [[ ${#idx_order[@]} -gt 0 ]]; then
-                while IFS= read -r sorted_idx; do
-                    row_order+=("$sorted_idx")
-                done < <(printf '%s\n' "${idx_order[@]}" | sort -n)
+                unset cell col_seen idx_seen
+                return 0
             fi
-            [[ "$has_no_index" -eq 1 ]] && row_order+=("")
 
-            # Compute each column's width = max(len(colname), len of every value in it)
+            # Compute how many sub-rows each index needs (max stacked values
+            # across its columns), and each column's width across every
+            # index/sub-row combination.
+            declare -A subrow_counts
+            for idx in "${row_order[@]}"; do
+                subrow_counts["$idx"]=$(_basher_index_subrow_count "$idx" col_order)
+            done
+
             widths=()
             for i in "${!col_order[@]}"; do
                 colname="${col_order[$i]}"
                 w=${#colname}
                 for idx in "${row_order[@]}"; do
-                    v="${cell[${idx}$'\x1f'${colname}]:-}"
-                    (( ${#v} > w )) && w=${#v}
+                    _basher_cell_values "$idx" "$colname"
+                    for v in "${_cv[@]}"; do
+                        (( ${#v} > w )) && w=${#v}
+                    done
                 done
                 widths[$i]=$w
             done
@@ -235,15 +358,19 @@ case "$1" in
             echo "$header"
             echo "$sep"
 
-            # Value rows, grouped by index (low to high), no-index vars on the last row
+            # Value rows, grouped by index (low to high), no-index vars on the
+            # last row(s). Any index whose columns collided (e.g. loot5 and
+            # loot5_1 sharing [Loot]) expands into one extra row per stacked value.
             for idx in "${row_order[@]}"; do
-                row=""
-                for i in "${!col_order[@]}"; do
-                    colname="${col_order[$i]}"
-                    v="${cell[${idx}$'\x1f'${colname}]:-}"
-                    row+=$(printf "%-${widths[$i]}s " "$v")
+                for ((r = 0; r < subrow_counts["$idx"]; r++)); do
+                    row=""
+                    for i in "${!col_order[@]}"; do
+                        colname="${col_order[$i]}"
+                        _basher_cell_values "$idx" "$colname"
+                        row+=$(printf "%-${widths[$i]}s " "${_cv[$r]:-}")
+                    done
+                    echo "$row"
                 done
-                echo "$row"
             done
 
             # --- Also write the table out as a Markdown file, next to this script ---
@@ -261,19 +388,107 @@ case "$1" in
                 echo "$md_header"
                 echo "$md_sep"
                 for idx in "${row_order[@]}"; do
-                    md_row="|"
-                    for i in "${!col_order[@]}"; do
-                        colname="${col_order[$i]}"
-                        v="${cell[${idx}$'\x1f'${colname}]:-}"
-                        md_row+=" ${v} |"
+                    for ((r = 0; r < subrow_counts["$idx"]; r++)); do
+                        md_row="|"
+                        for i in "${!col_order[@]}"; do
+                            colname="${col_order[$i]}"
+                            _basher_cell_values "$idx" "$colname"
+                            md_row+=" ${_cv[$r]:-} |"
+                        done
+                        echo "$md_row"
                     done
-                    echo "$md_row"
                 done
             } > "$md_file"
 
-            unset cell col_seen idx_seen
+            unset cell col_seen idx_seen subrow_counts
 
             echo ""
+            echo "Markdown table written to: $md_file"
+        fi
+        ;;
+
+    --per-index)
+        if [[ ! -s "$STORE_FILE" ]]; then
+            echo "(no variables stored)"
+        else
+            _basher_load_table_data
+
+            _basher_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            md_file="${_basher_script_dir}/basher_table.md"
+            : > "$md_file"
+
+            for idx in "${row_order[@]}"; do
+                label="${idx:-No index}"
+
+                filtered_cols=()
+                for c in "${col_order[@]}"; do
+                    _basher_cell_values "$idx" "$c"
+                    [[ ${#_cv[@]} -gt 0 ]] && filtered_cols+=("$c")
+                done
+                [[ ${#filtered_cols[@]} -eq 0 ]] && continue
+
+                subrows=$(_basher_index_subrow_count "$idx" filtered_cols)
+
+                widths=()
+                for i in "${!filtered_cols[@]}"; do
+                    c="${filtered_cols[$i]}"
+                    _basher_cell_values "$idx" "$c"
+                    w=${#c}
+                    for v in "${_cv[@]}"; do
+                        (( ${#v} > w )) && w=${#v}
+                    done
+                    widths[$i]=$w
+                done
+
+                header=""
+                sep=""
+                for i in "${!filtered_cols[@]}"; do
+                    header+=$(printf "%-${widths[$i]}s " "${filtered_cols[$i]}")
+                    sep+=$(printf '%*s' "${widths[$i]}" '' | tr ' ' '-')
+                    sep+=" "
+                done
+
+                echo "Index: $label"
+                echo "$header"
+                echo "$sep"
+
+                md_header="|"
+                md_sep="|"
+                for i in "${!filtered_cols[@]}"; do
+                    md_header+=" ${filtered_cols[$i]} |"
+                    md_sep+=" --- |"
+                done
+                md_rows=()
+
+                for ((r = 0; r < subrows; r++)); do
+                    row=""
+                    md_row="|"
+                    for i in "${!filtered_cols[@]}"; do
+                        c="${filtered_cols[$i]}"
+                        _basher_cell_values "$idx" "$c"
+                        v="${_cv[$r]:-}"
+                        row+=$(printf "%-${widths[$i]}s " "$v")
+                        md_row+=" ${v} |"
+                    done
+                    echo "$row"
+                    md_rows+=("$md_row")
+                done
+                echo ""
+
+                {
+                    echo "### Index: $label"
+                    echo ""
+                    echo "$md_header"
+                    echo "$md_sep"
+                    for md_row in "${md_rows[@]}"; do
+                        echo "$md_row"
+                    done
+                    echo ""
+                } >> "$md_file"
+            done
+
+            unset cell col_seen idx_seen
+
             echo "Markdown table written to: $md_file"
         fi
         ;;
