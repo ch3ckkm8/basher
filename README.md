@@ -88,11 +88,21 @@ source ./basher target 10.10.10.6 [IP]
 source ./basher pass Passw0rd! [Password]
 ```
 
-If you don't provide a `[ColumnName]`, the table just uses the variable name itself (e.g. `user` above).
+If you don't provide a `[ColumnName]`, the table just uses the variable name itself.
+
+Variables that share the same `[ColumnName]` are grouped into that one column, stacked as separate rows.
 
 ```bash
 source ./basher foo bar BADCOL
 # Error: column name must be wrapped in brackets, e.g. [ColumnName]
+```
+
+### Exclude a variable from the table entirely
+Pass `[notable]` instead of a column name to save and export the variable as normal, but keep it out of `--table`/`--per-index` (and the generated markdown file) completely. It still shows up in `--list` and `--load`.
+
+```bash
+source ./basher session_id 8f3a1c2e [notable]
+# Set & exported: session_id = 8f3a1c2e (excluded from --table)
 ```
 
 ### Get a variable
@@ -102,31 +112,98 @@ source ./basher target
 ```
 
 ### List all stored variables
+Also exports every stored variable into the current shell as a side effect — handy for refreshing a fresh terminal without a separate `--load`.
+
 ```bash
 source ./basher --list
 # VARIABLE             VALUE                COLUMN
 # --------             -----                ------
 # target               10.10.10.6           IP
 # user                 myuser               (default)
-# port                 8080                 (default)
+# session_id           8f3a1c2e             (excluded from --table)
 ```
 
 ### Display all variables as a table
-Prints all stored variables as a single table, where each **column header is the variable's name** (or its custom `[ColumnName]`, if one was set) and the value sits underneath it.
+Prints all stored variables as a table and also exports every one of them into the current shell (same as `--list`) — so running `--table` alone is enough to pick up variables saved in an earlier session.
+
+**Columns** come from each variable's custom `[ColumnName]` (or its own varname, if none was set). Variables sharing a `[ColumnName]` stack as separate rows in that one column.
+
+**Rows** are grouped and sorted by the *primary* numeric index in the variable name — e.g. `user1`, `pass1`, `target1`, and `port1` all land on row "1" together, `user2`/`pass2` land on row "2", and so on, sorted with the lowest index on top. A trailing `_N` suffix is treated as a **sub-index** of the number before it, not a separate row — so `creds1_1` and `creds1_2` both count as index `1`, right alongside `user1`. Variables with no index at all (like a plain `notes`) are placed together on the final row. Shorter columns are simply left blank for rows that don't have an entry.
 
 ```bash
+source ./basher user1 b0b
+source ./basher host1 desktop-p2d21
+source ./basher creds1 b0b:p4ss [Credentials]
+source ./basher creds1_2 alt-cred:p4ss2 [AltCreds]
+source ./basher user2 alice
+
 source ./basher --table
-# IP         user    port
-# ---------- ------- ----
-# 10.10.10.6 myuser  8080
+# user1 host1         Credentials AltCreds
+# ----- ------------- ----------- --------------
+# b0b   desktop-p2d21 b0b:p4ss    alt-cred:p4ss2
+#       (row for user2 below)
 ```
 
-This also automatically writes the same table as a Markdown file — `basher_table.md` — saved in the same directory as the `basher` script itself. It's overwritten every time you run `--table`.
+This also automatically writes the same table as a Markdown file — `basher_table.md` — saved in the same directory as the `basher` script itself. It's overwritten every time you run `--table` (with no index argument).
 
 ```md
-| IP | user | port |
-| --- | --- | --- |
-| 10.10.10.6 | myuser | 8080 |
+| user1 | host1 | Credentials | AltCreds |
+| --- | --- | --- | --- |
+| b0b | desktop-p2d21 | b0b:p4ss | alt-cred:p4ss2 |
+```
+
+### Show only one index's variables
+Pass a numeric index as a second argument to `--table` to print just the variables grouped under that index (again including any `_N` sub-indexed ones). This is a quick lookup and doesn't touch `basher_table.md`.
+
+```bash
+source ./basher --table 1
+# Index: 1
+# user1 host1         Credentials AltCreds
+# ----- ------------- ----------- --------------
+# b0b   desktop-p2d21 b0b:p4ss    alt-cred:p4ss2
+
+source ./basher --table 99
+# No variables found with index: 99
+```
+
+### Display one mini-table per index
+`--per-index` walks through every index you have (lowest to highest, with any no-index variables last) and prints a separate mini-table for each — handy when you're juggling several hosts/targets and want them broken out individually instead of one wide combined table. It also exports every variable and (over)writes `basher_table.md` with all the sections, one per index.
+
+```bash
+source ./basher --per-index
+# user1 host1         Credentials AltCreds
+# ----- ------------- ----------- --------------
+# b0b   desktop-p2d21 b0b:p4ss    alt-cred:p4ss2
+#
+# Index: 2
+# user2 Credentials
+# ----- ------------
+# alice alice:secret
+#
+# Index: No index
+# notes
+# -------------------
+# flat note, no index
+```
+
+```md
+### Index: 1
+
+| user1 | host1 | Credentials | AltCreds |
+| --- | --- | --- | --- |
+| b0b | desktop-p2d21 | b0b:p4ss | alt-cred:p4ss2 |
+
+### Index: 2
+
+| user2 | Credentials |
+| --- | --- |
+| alice | alice:secret |
+
+### Index: No index
+
+| notes |
+| --- |
+| flat note, no index |
 ```
 
 ### Load all variables into a new shell session
@@ -155,15 +232,21 @@ source ./basher --clear
 
 ## Storage
 
-Variables are stored in `~/.basher_store`, one per line, as `KEY=VALUE` followed by a tab-separated custom column name (which may be empty if you didn't set one):
+Variables are stored in `~/.basher_store`, one per line, as `KEY=VALUE` followed by a custom column name and a `[notable]` flag, both optional, separated by the Unit Separator character (`\x1f`, not a visible character in a normal text editor):
 
 ```
-target=10.10.10.6	IP
-user=myuser	
-port=8080	
+target=10.10.10.6␟IP␟
+user=myuser␟␟
+session_id=8f3a1c2e␟␟1
 ```
 
 You don't need to edit this file by hand — it's managed for you by the `set`, `--delete`, and `--clear` commands.
+
+> **Note:** older versions of this script used a literal tab as the separator, which had a subtle bug (bash collapses consecutive tabs, corrupting entries that had no custom column). If `basher` finds any leftover tab-delimited entries in your store file, it automatically migrates them to the current format the next time you run it — your variable values are preserved, but any custom `[ColumnName]`/`[notable]` tags on those specific entries are reset to default, since they can't be reliably recovered from the old corrupted format. You'll see a one-time message like:
+> ```
+> Migrated 3 variable(s) from an older basher storage format.
+> Values were preserved; any custom [ColumnName]/[notable] tags on those were reset — feel free to re-set them.
+> ```
 
 You can override the storage location with the `BASHER_STORE` environment variable:
 
@@ -172,24 +255,11 @@ export BASHER_STORE=/tmp/my_custom_store
 source ./basher target 10.10.10.6
 ```
 
-## Variable naming rules
-
-Variable names must start with a letter or underscore, and contain only letters, digits, and underscores.
-
-```bash
-source ./basher my_var value      # ✅ valid
-source ./basher 1var value        # ❌ invalid
-source ./basher my-var value      # ❌ invalid
-```
-
-Custom table column names (the optional `[ColumnName]` argument) must be wrapped in square brackets, but otherwise have no character restrictions.
-
 ---
 
 ## Real-world example
 
 ```bash
-# import entries via commands below:
 source basher ip1 10.10.18.3 [IP]
 source basher host1 linuxhost [Hostname]
 source basher notes1 bob-sworkstation [Notes]
@@ -217,6 +287,11 @@ IP         Hostname  Notes            Ports   Credentials
 
 Markdown table written to: /home/ch3ckm8/HTB/garfield/basher/basher_table.md
 
+> source basher --table 1
+Index: 1
+IP         Hostname  Notes            Ports   Credentials
+---------- --------- ---------------- ------- ------------
+10.10.18.3 linuxhost bob-sworkstation 80,9000 b0b:p4ssw0rd
 ```
 
 ---
@@ -243,8 +318,7 @@ python wyrmgaze.py test.txt
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⠴⠚⣩⠔⠋⠉⠀⠀⠐⠊⠉⠀⢀⠀⠀⠀⠀⠀⠀⢀⣠⠔⠛⠛⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⣉⡭⠟⠛⠉⠀⠀⠀⠀⠀                                                                                                  
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠞⠋⣟⡡⠶⠛⠒⠚⠉⠀⠀⠀⠀⠀⠀⡰⠋⠀⠀⠀⠀⢠⡖⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡤⠴⠒⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡤⠖⠋⣀⣴⣋⠥⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠀⣀⠤⠖⠒⠒⠿⢤⣀⡀⠀⠀⠀⠀⠀⣠⠴⠚⠛⠓⠦⠤⢤⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
-⠀⠀⠀⠀⠀⠀⠀⠀⢠⡖⠋⠀⣠⠖⠋⠁⠀⠀⠀⢀⡀⠀⠀⠀⠀⢀⣀⠤⠞⠁⠀⠉⠀⠀⠀⠀⢀⣀⣀⠀⠉⠙⠒⠦⢴⣋⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣈⣭⠽⠿⠟⠓⠀⠀⠀                                                                                                  
-⠀⠀⠀⠀⠀⠀⠀⢀⣸⣧⠀⢸⡁⠀⠀⣠⣴⣲⣶⡏⠀⢀⡠⠖⠊⠉⠀⠀⠀⠀⠀⠀⠀⣼⡟⠉⠁⠀⠈⠉⠉⠒⠲⢤⣀⠈⠙⠲⢤⣀⣀⡤⠴⠶⠯⣅⣀⠀⠀⠀⠀⠀⠀⠀⠀                                                                                                  
+⠀⠀⠀⠀⠀⠀⠀⢠⡖⠋⠀⣠⠖⠋⠁⠀⠀⠀⢀⡀⠀⠀⠀⠀⢀⣀⠤⠞⠁⠀⠉⠀⠀⠀⠀⠀⢀⣀⣀⠀⠉⠙⠒⠦⢴⣋⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣈⣭⠽⠿⠟⠓⠀⠀⠀                                                                                                  
 ⠀⠀⠀⣀⣠⡴⠒⠉⠁⠀⢀⡤⠛⠓⠋⠙⠻⠿⠋⢀⡴⠋⢀⡤⠒⠒⠤⣄⣠⡀⠀⠀⠀⣯⠙⠦⣄⠀⠀⠀⠀⠀⠀⠀⠈⠙⠲⠤⣀⣈⣉⣓⣦⣄⡀⠀⠀⠉⠓⠦⣄⡀⠀⠀⠀                                                                                                  
 ⠀⠀⣰⣿⡟⢠⣿⣙⡓⢦⡅⠀⠀⠀⠀⣀⡤⠤⢴⠋⣸⡟⡏⠀⠀⠀⠀⠀⠙⠁⠀⠀⠀⠘⣷⠤⣈⠑⠦⣄⠀⠀⠀⠀⠀⠀⣠⣶⣚⠉⠁⠀⢈⣉⢭⣷⡶⠔⠒⠒⠚⠛⠓⠀⠀                                                                                                  
 ⠀⣼⣿⠟⢀⣴⠋⢁⡖⠉⢀⡤⠖⡒⠉⢁⣄⣀⣾⠖⣇⣷⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⠀⠈⠑⠦⣀⠙⢦⡀⠀⣄⣠⡟⠳⣝⣦⠀⠀⠀⠙⠦⡈⠓⢤⡀⠀⠀⠀⠀⠀⠀                                                                                                  
@@ -278,3 +352,17 @@ python wyrmgaze.py test.txt
 | 2   | 80,9000    | enum   | webapp  |
 +-----+------------+--------+---------+
 ```
+
+---
+
+## Variable naming rules
+
+Variable names must start with a letter or underscore, and contain only letters, digits, and underscores.
+
+```bash
+source ./basher my_var value      # ✅ valid
+source ./basher 1var value        # ❌ invalid
+source ./basher my-var value      # ❌ invalid
+```
+
+Custom table column names (the optional `[ColumnName]` argument) must be wrapped in square brackets, but otherwise have no character restrictions. `[notable]` is reserved and excludes the variable from `--table`/`--per-index` instead of being treated as a literal column name.
