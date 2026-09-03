@@ -163,11 +163,11 @@ source ./basher --table
 
 This also automatically writes the same table as a Markdown file — `basher_table.md` — saved in the same directory as the `basher` script itself. It's overwritten every time you run `--table` (with no index argument).
 
-```md
+
 | user1 | host1 | Credentials | AltCreds |
 | --- | --- | --- | --- |
 | b0b | desktop-p2d21 | b0b:p4ss | alt-cred:p4ss2 |
-```
+
 
 ### Show only one index's variables
 Pass a numeric index as a second argument to `--table` to print just the variables grouped under that index (again including any `_N` sub-indexed ones). This is a quick lookup and doesn't touch `basher_table.md`.
