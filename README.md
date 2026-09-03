@@ -130,6 +130,23 @@ Prints all stored variables as a table and also exports every one of them into t
 
 **Rows** are grouped and sorted by the *primary* numeric index in the variable name — e.g. `user1`, `pass1`, `target1`, and `port1` all land on row "1" together, `user2`/`pass2` land on row "2", and so on, sorted with the lowest index on top. A trailing `_N` suffix is treated as a **sub-index** of the number before it, not a separate row — so `creds1_1` and `creds1_2` both count as index `1`, right alongside `user1`. Variables with no index at all (like a plain `notes`) are placed together on the final row. Shorter columns are simply left blank for rows that don't have an entry.
 
+If several variables end up sharing **both** the same index **and** the same `[ColumnName]` (e.g. `loot5`, `loot5_1`, and `loot5_2` all tagged `[Loot]`), they'd otherwise collide into one table cell — instead of losing data, each one gets its own row under that column, in the order they were set. Other columns on that index (like `target5` below) just show their value on the first of those rows and stay blank on the rest.
+
+```bash
+source ./basher target5 10.10.10.5
+source ./basher loot5 "gold coins" [Loot]
+source ./basher loot5_1 "silver coins" [Loot]
+source ./basher loot5_2 "bronze coins" [Loot]
+
+source ./basher --table 5
+# Index: 5
+# Loot         target5
+# ------------ ----------
+# gold coins   10.10.10.5
+# silver coins
+# bronze coins
+```
+
 ```bash
 source ./basher user1 b0b
 source ./basher host1 desktop-p2d21
